@@ -64,17 +64,16 @@ impl ListingEntry {
         }
         else if dentry_file_type.is_symlink() {
             let result = fs::read_link(dentry.path());
-            if result.is_err() {
-                ListingEntry::new_symlink(&name, "???")
-            }
-            else {
-                let target = result.unwrap();
-                match target.to_str() {
-                    Some(target) => {
-                        ListingEntry::new_symlink(&name, target)
-                    }
-                    None => {
-                        ListingEntry::new_symlink(&name, "???")
+            match result {
+                Err(_) => { ListingEntry::new_symlink(&name, "???") }
+                Ok(target) => {
+                    match target.to_str() {
+                        Some(target) => {
+                            ListingEntry::new_symlink(&name, target)
+                        }
+                        None => {
+                            ListingEntry::new_symlink(&name, "???")
+                        }
                     }
                 }
             }
