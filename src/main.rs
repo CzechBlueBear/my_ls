@@ -19,10 +19,27 @@ enum ListingFileType {
 /// A single entry of the listing we will produce.
 struct ListingEntry {
     pub name: String,
-    pub file_type: ListingFileType
+    pub file_type: ListingFileType,
+    pub link_target: String
 }
 
 impl ListingEntry {
+
+    pub fn new(name: &str, file_type: ListingFileType) -> ListingEntry {
+        ListingEntry {
+            name: name.to_string(),
+            file_type,
+            link_target: "".to_string()
+        }
+    }
+
+    pub fn new_symlink(name: &str, link_target: &str) -> ListingEntry {
+        ListingEntry {
+            name: name.to_string(),
+            file_type: ListingFileType::Symlink,
+            link_target: link_target.to_string()
+        }
+    }
 
     pub fn from_dentry(dentry: &fs::DirEntry) -> ListingEntry {
 
@@ -30,10 +47,7 @@ impl ListingEntry {
         // we print "???" to at least show that there is something
         let name = dentry.file_name().into_string();
         if name.is_err() {
-            return ListingEntry {
-                name: "???".to_string(),
-                file_type: ListingFileType::Unknown
-            }
+            return ListingEntry::new("???", ListingFileType::Unknown);
         }
         let name = name.unwrap();
 
@@ -41,36 +55,48 @@ impl ListingEntry {
         // we print the name and unknown type
         let dentry_file_type = dentry.file_type();
         if dentry_file_type.is_err() {
-            return ListingEntry {
-                name,
-                file_type: ListingFileType::Unknown
-            };
+            return ListingEntry::new(&name, ListingFileType::Unknown);
         }
         let dentry_file_type = dentry_file_type.unwrap();
 
         if dentry_file_type.is_dir() {
-            ListingEntry { name, file_type: ListingFileType::Directory }
+            ListingEntry::new(&name, ListingFileType::Directory)
         }
         else if dentry_file_type.is_symlink() {
-            ListingEntry { name, file_type: ListingFileType::Symlink }
+            let result = fs::read_link(dentry.path());
+            if result.is_err() {
+                ListingEntry::new_symlink(&name, "???")
+            }
+            else {
+                let target = result.unwrap();
+                match target.to_str() {
+                    Some(target) => {
+                        ListingEntry::new_symlink(&name, target)
+                    }
+                    None => {
+                        ListingEntry::new_symlink(&name, "???")
+                    }
+                }
+            }
         }
         else if dentry_file_type.is_fifo() {
-            ListingEntry { name, file_type: ListingFileType::Pipe }
+            ListingEntry::new(&name, ListingFileType::Pipe)
         }
         else if dentry_file_type.is_char_device() {
-            ListingEntry { name, file_type: ListingFileType::CharDevice }
+            ListingEntry::new(&name, ListingFileType::CharDevice)
         }
         else if dentry_file_type.is_block_device() {
-            ListingEntry { name, file_type: ListingFileType::BlockDevice }
+            ListingEntry::new(&name, ListingFileType::BlockDevice)
         }
         else if dentry_file_type.is_socket() {
-            ListingEntry { name, file_type: ListingFileType::Socket }
+            ListingEntry::new(&name, ListingFileType::Socket)
         }
         else {
-            ListingEntry { name, file_type: ListingFileType::Regular }
+            ListingEntry::new(&name, ListingFileType::Regular)
         }
     }
 
+    /// Returns a string containing Unicode icon for the file.
     pub fn get_icon(&self) -> &'static str {
         match self.file_type {
             ListingFileType::Unknown => { "\u{274E}\u{FE0E}" },
@@ -129,10 +155,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // if the query fails, add at least the "???" entry
             // to show that something was detected
-            listing.push(ListingEntry {
-                name: "???".to_string(),
-                file_type: ListingFileType::Unknown
-            });
+            listing.push(ListingEntry::new("???", ListingFileType::Unknown));
         }
     }
 
@@ -148,7 +171,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // then other files
     for l in &listing {
         if l.file_type != ListingFileType::Directory {
-            println!("{} {}", l.get_icon(), l.name);
+            if l.file_type == ListingFileType::Symlink {
+                println!("{} {} -> {}", l.get_icon(), l.name, l.link_target);
+            } else {
+                println!("{} {}", l.get_icon(), l.name);
+            }
         }
     }
 
